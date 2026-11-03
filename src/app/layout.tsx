@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function generateMetadata(): Promise<Metadata> {
+  await ensureDatabaseSynced();
   try {
     const [site, seo] = await Promise.all([
       prisma.siteSettings.findUnique({ where: { id: "default" } }),

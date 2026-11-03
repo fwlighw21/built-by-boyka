@@ -14,7 +14,8 @@ export function getDbPath(): string {
   return path.join(process.cwd(), "prisma", DB_FILENAME);
 }
 
-// Global timestamp to throttle remote sync checks (at most once every 500ms per container)
+// In-flight synchronization promise mutex to prevent concurrent callers from racing
+let inFlightSync: Promise<void> | null = null;
 let lastSyncTimestamp = 0;
 const SYNC_INTERVAL_MS = 500;
 
@@ -39,81 +40,91 @@ export async function ensureDatabaseSynced(): Promise<void> {
     return;
   }
 
+  // If a sync is already running on this container, await its completion
+  if (inFlightSync) {
+    return inFlightSync;
+  }
+
   const now = Date.now();
-  if (dbExists && now - lastSyncTimestamp < SYNC_INTERVAL_MS) {
+  if (dbExists && fs.existsSync(syncRecordPath) && now - lastSyncTimestamp < SYNC_INTERVAL_MS) {
     return;
   }
-  lastSyncTimestamp = now;
 
-  try {
-    const { blobs } = await list({ prefix: BLOB_PATH });
-    const remoteBlob = blobs.find((b) => b.pathname === BLOB_PATH);
+  inFlightSync = (async () => {
+    try {
+      const { blobs } = await list({ prefix: BLOB_PATH });
+      const remoteBlob = blobs.find((b) => b.pathname === BLOB_PATH);
 
-    if (remoteBlob) {
-      const remoteTime = new Date(remoteBlob.uploadedAt).getTime();
-      let shouldDownload = !dbExists;
-      if (dbExists) {
-        if (!fs.existsSync(syncRecordPath)) {
-          shouldDownload = true;
-        } else {
-          try {
-            const lastSyncedTime = Number(fs.readFileSync(syncRecordPath, "utf-8").trim());
-            if (isNaN(lastSyncedTime) || remoteTime > lastSyncedTime) {
+      if (remoteBlob) {
+        const remoteTime = new Date(remoteBlob.uploadedAt).getTime();
+        let shouldDownload = !dbExists;
+        if (dbExists) {
+          if (!fs.existsSync(syncRecordPath)) {
+            shouldDownload = true;
+          } else {
+            try {
+              const lastSyncedTime = Number(fs.readFileSync(syncRecordPath, "utf-8").trim());
+              if (isNaN(lastSyncedTime) || remoteTime > lastSyncedTime) {
+                shouldDownload = true;
+              }
+            } catch {
               shouldDownload = true;
             }
-          } catch {
-            shouldDownload = true;
           }
         }
-      }
 
-      if (shouldDownload) {
-        const fetchUrl = `${remoteBlob.url}?t=${remoteTime}`;
-        const res = await fetch(fetchUrl, { cache: "no-store" });
-        if (res.ok) {
-          const arrayBuffer = await res.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const dir = path.dirname(dbPath);
-          if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-          }
-          fs.writeFileSync(dbPath, buffer);
-          try {
-            fs.writeFileSync(syncRecordPath, String(remoteTime));
-          } catch {
-            // ignore
-          }
-          try {
-            await prisma.$disconnect();
-          } catch {
-            // ignore
-          }
-          console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes) to ${dbPath}`);
-          return;
-        }
-      }
-    } else {
-      // Remote blob does not exist yet: seed it from initial bundled database
-      if (!dbExists) {
-        const candidatePaths = [
-          path.join(process.cwd(), "prisma", "dev.db"),
-          path.join(process.cwd(), "dev.db"),
-          path.join(__dirname, "..", "..", "prisma", "dev.db"),
-        ];
-        for (const src of candidatePaths) {
-          if (fs.existsSync(src)) {
-            fs.copyFileSync(src, dbPath);
-            break;
+        if (shouldDownload) {
+          const fetchUrl = `${remoteBlob.url}?t=${remoteTime}`;
+          const res = await fetch(fetchUrl, { cache: "no-store" });
+          if (res.ok) {
+            const arrayBuffer = await res.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const dir = path.dirname(dbPath);
+            if (!fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.writeFileSync(dbPath, buffer);
+            try {
+              fs.writeFileSync(syncRecordPath, String(remoteTime));
+            } catch {
+              // ignore
+            }
+            try {
+              await prisma.$disconnect();
+            } catch {
+              // ignore
+            }
+            console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes) to ${dbPath}`);
           }
         }
+      } else {
+        // Remote blob does not exist yet: seed it from initial bundled database
+        if (!dbExists) {
+          const candidatePaths = [
+            path.join(process.cwd(), "prisma", "dev.db"),
+            path.join(process.cwd(), "dev.db"),
+            path.join(__dirname, "..", "..", "prisma", "dev.db"),
+          ];
+          for (const src of candidatePaths) {
+            if (fs.existsSync(src)) {
+              fs.copyFileSync(src, dbPath);
+              break;
+            }
+          }
+        }
+        if (fs.existsSync(dbPath)) {
+          await persistDatabaseToBlob();
+        }
       }
-      if (fs.existsSync(dbPath)) {
-        await persistDatabaseToBlob();
-      }
+      lastSyncTimestamp = Date.now();
+    } catch (err: any) {
+      console.error("[SyncDb] Error during database sync check:", err.message);
+    } finally {
+      inFlightSync = null;
     }
-  } catch (err: any) {
-    console.error("[SyncDb] Error during database sync check:", err.message);
-  }
+  })();
+
+  return inFlightSync;
 }
 
 /**

@@ -14,9 +14,9 @@ export function getDbPath(): string {
   return path.join(process.cwd(), "prisma", DB_FILENAME);
 }
 
-// Global timestamp to throttle remote sync checks (at most once every 2 seconds per container)
+// Global timestamp to throttle remote sync checks (at most once every 500ms per container)
 let lastSyncTimestamp = 0;
-const SYNC_INTERVAL_MS = 2000;
+const SYNC_INTERVAL_MS = 500;
 
 /**
  * Ensures the SQLite database on this container is up-to-date with the latest
@@ -26,6 +26,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
   const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
   const dbPath = getDbPath();
   const dbExists = fs.existsSync(dbPath);
+  const syncRecordPath = dbPath + ".synced";
 
   // If running locally without Vercel Blob configured, ensure local file exists
   if (!process.env.BLOB_STORE_ID && !process.env.VERCEL) {
@@ -49,13 +50,20 @@ export async function ensureDatabaseSynced(): Promise<void> {
     const remoteBlob = blobs.find((b) => b.pathname === BLOB_PATH);
 
     if (remoteBlob) {
+      const remoteIso = new Date(remoteBlob.uploadedAt).toISOString();
       let shouldDownload = !dbExists;
       if (dbExists) {
-        const localStats = fs.statSync(dbPath);
-        const remoteTime = new Date(remoteBlob.uploadedAt).getTime();
-        // If remote version is newer than local container's version
-        if (remoteTime > localStats.mtimeMs) {
+        if (!fs.existsSync(syncRecordPath)) {
           shouldDownload = true;
+        } else {
+          try {
+            const lastSyncedIso = fs.readFileSync(syncRecordPath, "utf-8").trim();
+            if (lastSyncedIso !== remoteIso) {
+              shouldDownload = true;
+            }
+          } catch {
+            shouldDownload = true;
+          }
         }
       }
 
@@ -70,6 +78,11 @@ export async function ensureDatabaseSynced(): Promise<void> {
             fs.mkdirSync(dir, { recursive: true });
           }
           fs.writeFileSync(dbPath, buffer);
+          try {
+            fs.writeFileSync(syncRecordPath, remoteIso);
+          } catch {
+            // ignore
+          }
           try {
             await prisma.$disconnect();
           } catch {
@@ -109,6 +122,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
  */
 export async function persistDatabaseToBlob(): Promise<string | null> {
   const dbPath = getDbPath();
+  const syncRecordPath = dbPath + ".synced";
   if (!fs.existsSync(dbPath)) return null;
 
   try {
@@ -120,6 +134,11 @@ export async function persistDatabaseToBlob(): Promise<string | null> {
       cacheControlMaxAge: 0,
     });
     lastSyncTimestamp = Date.now();
+    try {
+      fs.writeFileSync(syncRecordPath, new Date(blob.uploadedAt).toISOString());
+    } catch {
+      // ignore
+    }
     console.log(`[SyncDb] Successfully backed up database to Blob: ${blob.url}`);
     return blob.url;
   } catch (err: any) {

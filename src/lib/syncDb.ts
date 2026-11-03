@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { put, list } from "@vercel/blob";
+import { prisma } from "./prisma";
 
 const DB_FILENAME = "dev.db";
 const BLOB_PATH = "database/dev.db";
@@ -59,11 +60,21 @@ export async function ensureDatabaseSynced(): Promise<void> {
       }
 
       if (shouldDownload) {
-        const res = await fetch(remoteBlob.url, { cache: "no-store" });
+        const fetchUrl = `${remoteBlob.url}?t=${new Date(remoteBlob.uploadedAt).getTime()}`;
+        const res = await fetch(fetchUrl, { cache: "no-store" });
         if (res.ok) {
           const arrayBuffer = await res.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
+          const dir = path.dirname(dbPath);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
           fs.writeFileSync(dbPath, buffer);
+          try {
+            await prisma.$disconnect();
+          } catch {
+            // ignore
+          }
           console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes) to ${dbPath}`);
           return;
         }
@@ -105,6 +116,7 @@ export async function persistDatabaseToBlob(): Promise<string | null> {
     const blob = await put(BLOB_PATH, fileBuffer, {
       access: "public",
       addRandomSuffix: false,
+      allowOverwrite: true,
       cacheControlMaxAge: 0,
     });
     lastSyncTimestamp = Date.now();
@@ -132,6 +144,7 @@ export async function uploadMediaToBlob(
   const blob = await put(uniqueName, fileBuffer, {
     access: "public",
     contentType: contentType,
+    allowOverwrite: true,
   });
 
   return blob.url;

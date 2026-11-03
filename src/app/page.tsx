@@ -16,43 +16,56 @@ import Footer from "@/components/public/Footer";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [
-    site,
-    navItems,
-    sectionsList,
-    packages,
-    transformations,
-    featuredVideo,
-    testimonials,
-    faqs,
-  ] = await Promise.all([
-    prisma.siteSettings.findUnique({ where: { id: "default" } }),
-    prisma.navigationItem.findMany({
-      where: { isVisible: true },
-      orderBy: { order: "asc" },
-    }),
-    prisma.sectionContent.findMany({
-      where: { isVisible: true },
-      orderBy: { order: "asc" },
-    }),
-    prisma.coachingPackage.findMany({
-      where: { isPublished: true },
-      orderBy: { order: "asc" },
-    }),
-    prisma.clientTransformation.findMany({
-      where: { isPublished: true },
-      orderBy: { order: "asc" },
-    }),
-    prisma.featuredVideoSettings.findUnique({ where: { id: "default" } }),
-    prisma.testimonial.findMany({
-      where: { isPublished: true },
-      orderBy: { order: "asc" },
-    }),
-    prisma.faqItem.findMany({
-      where: { isPublished: true },
-      orderBy: { order: "asc" },
-    }),
-  ]);
+  let site: any = null;
+  let navItems: any[] = [];
+  let sectionsList: any[] = [];
+  let packages: any[] = [];
+  let transformations: any[] = [];
+  let featuredVideo: any = null;
+  let testimonials: any[] = [];
+  let faqs: any[] = [];
+
+  try {
+    [
+      site,
+      navItems,
+      sectionsList,
+      packages,
+      transformations,
+      featuredVideo,
+      testimonials,
+      faqs,
+    ] = await Promise.all([
+      prisma.siteSettings.findUnique({ where: { id: "default" } }),
+      prisma.navigationItem.findMany({
+        where: { isVisible: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.sectionContent.findMany({
+        where: { isVisible: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.coachingPackage.findMany({
+        where: { isPublished: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.clientTransformation.findMany({
+        where: { isPublished: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.featuredVideoSettings.findUnique({ where: { id: "default" } }),
+      prisma.testimonial.findMany({
+        where: { isPublished: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.faqItem.findMany({
+        where: { isPublished: true },
+        orderBy: { order: "asc" },
+      }),
+    ]);
+  } catch (err) {
+    console.error("HomePage data load error:", err);
+  }
 
   // Map sections by sectionKey for easy lookup
   const sectionsMap = new Map(sectionsList.map((s) => [s.sectionKey, s]));

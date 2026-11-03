@@ -11,6 +11,9 @@ const nextConfig = {
     ],
   },
   experimental: {
+    outputFileTracingIncludes: {
+      "/**": ["./prisma/dev.db"],
+    },
     serverActions: {
       bodySizeLimit: "20mb",
     },

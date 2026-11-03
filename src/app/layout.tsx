@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import "./globals.css";
 import { prisma } from "@/lib/prisma";
 import ThemeInjector from "@/components/public/ThemeInjector";
@@ -61,6 +62,18 @@ export default async function RootLayout({
     ]);
   } catch (e) {
     console.error("Layout fetch error:", e);
+  }
+
+  // Cross-environment / Serverless cookie fallback
+  if (!theme) {
+    try {
+      const cookieTheme = cookies().get("boyka_theme_settings")?.value;
+      if (cookieTheme) {
+        theme = JSON.parse(cookieTheme);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   return (

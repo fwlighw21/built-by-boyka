@@ -122,6 +122,33 @@ export default function ThemeEditorPage() {
             ...data,
           }));
 
+          // Apply CSS variables on root immediately
+          if (typeof document !== "undefined") {
+            const root = document.documentElement;
+            if (data.primaryColor) root.style.setProperty("--color-primary", data.primaryColor);
+            if (data.primaryHover) root.style.setProperty("--color-primary-hover", data.primaryHover);
+            if (data.secondaryColor) root.style.setProperty("--color-secondary", data.secondaryColor);
+            if (data.secondaryHover) root.style.setProperty("--color-secondary-hover", data.secondaryHover);
+            if (data.accentColor) root.style.setProperty("--color-accent", data.accentColor);
+            if (data.backgroundColor) root.style.setProperty("--color-bg-base", data.backgroundColor);
+            if (data.cardBackground) root.style.setProperty("--color-card-bg", data.cardBackground);
+            if (data.cardBorderColor) root.style.setProperty("--color-card-border", data.cardBorderColor);
+            if (data.textColor) root.style.setProperty("--color-text", data.textColor);
+            if (data.textMutedColor) root.style.setProperty("--color-text-muted", data.textMutedColor);
+            if (data.headingColor) root.style.setProperty("--color-heading", data.headingColor);
+            if (data.buttonBg) {
+              root.style.setProperty("--gradient-primary", data.buttonBg);
+              root.style.setProperty("--gradient-button", data.buttonBg);
+            }
+            if (data.heroGradient) root.style.setProperty("--gradient-hero", data.heroGradient);
+            if (data.borderGradient) root.style.setProperty("--gradient-border", data.borderGradient);
+            if (data.navBackground) root.style.setProperty("--nav-background", data.navBackground);
+            if (data.footerBackground) root.style.setProperty("--footer-background", data.footerBackground);
+            if (data.buttonText) root.style.setProperty("--button-text", data.buttonText);
+            if (data.glassBlur) root.style.setProperty("--glass-blur", `${data.glassBlur}px`);
+            if (data.borderRadius) root.style.setProperty("--border-radius", data.borderRadius);
+          }
+
           // Parse custom themes if any
           if (data.customGradientsJson) {
             try {
@@ -222,9 +249,38 @@ export default function ThemeEditorPage() {
         body: JSON.stringify(updatedPayload),
       });
 
-      if (!res.ok) throw new Error("Failed to apply theme");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Failed to apply theme (Status: ${res.status})`);
+      }
 
       setTheme(updatedPayload);
+
+      // Immediately apply CSS variables to root document
+      if (typeof document !== "undefined") {
+        const root = document.documentElement;
+        root.style.setProperty("--color-primary", targetTheme.primaryColor);
+        root.style.setProperty("--color-primary-hover", targetTheme.primaryHover);
+        root.style.setProperty("--color-secondary", targetTheme.secondaryColor);
+        root.style.setProperty("--color-secondary-hover", targetTheme.secondaryHover);
+        root.style.setProperty("--color-accent", targetTheme.accentColor);
+        root.style.setProperty("--color-bg-base", targetTheme.backgroundColor);
+        root.style.setProperty("--color-card-bg", targetTheme.cardBackground);
+        root.style.setProperty("--color-card-border", targetTheme.cardBorderColor);
+        root.style.setProperty("--color-text", targetTheme.textColor);
+        root.style.setProperty("--color-text-muted", targetTheme.textMutedColor);
+        root.style.setProperty("--color-heading", targetTheme.headingColor);
+        root.style.setProperty("--gradient-primary", targetTheme.buttonBg);
+        root.style.setProperty("--gradient-button", targetTheme.buttonBg);
+        root.style.setProperty("--gradient-hero", targetTheme.heroGradient);
+        root.style.setProperty("--gradient-border", targetTheme.borderGradient);
+        root.style.setProperty("--nav-background", targetTheme.navBackground);
+        root.style.setProperty("--footer-background", targetTheme.footerBackground);
+        root.style.setProperty("--button-text", targetTheme.buttonText);
+        root.style.setProperty("--glass-blur", `${targetTheme.glassBlur}px`);
+        root.style.setProperty("--border-radius", targetTheme.borderRadius);
+      }
+
       setRecentlyUsedIds((prev) => [
         targetTheme.id,
         ...prev.filter((id) => id !== targetTheme.id).slice(0, 5),
@@ -243,11 +299,9 @@ export default function ThemeEditorPage() {
 
   // Restore Default Logo Theme (Luminous Violet)
   const handleRestoreDefault = () => {
-    const defaultTheme = READY_MADE_THEMES.find((t) => t.id === "luminous-purple");
+    const defaultTheme = READY_MADE_THEMES.find((t) => t.id === "luminous-purple") || READY_MADE_THEMES[0];
     if (defaultTheme) {
-      if (confirm("Restore the official Built By Boyka Luminous Violet theme?")) {
-        applyTheme(defaultTheme);
-      }
+      applyTheme(defaultTheme);
     }
   };
 

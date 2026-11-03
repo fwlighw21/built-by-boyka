@@ -1,13 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { normalizeThemeList } from "@/lib/themeLibrary";
+import { normalizeThemeList, READY_MADE_THEMES } from "@/lib/themeLibrary";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const DEFAULT_THEME_FALLBACK = READY_MADE_THEMES[0] || {
+  id: "luminous-purple",
+  name: "Luminous Violet (Logo Identity)",
+  category: "Purple",
+  description: "Official Built By Boyka signature theme matching the luminous purple logo badge.",
+  previewGradient: "linear-gradient(135deg, #5424D8 0%, #7547F5 50%, #9B7BFF 100%)",
+  swatches: ["#7547F5", "#9B7BFF", "#C9B9FF", "#05030a", "#F0EAFF"],
+  primaryColor: "#7547F5",
+  primaryHover: "#6532eb",
+  secondaryColor: "#9B7BFF",
+  secondaryHover: "#8963ff",
+  accentColor: "#C9B9FF",
+  backgroundColor: "#05030a",
+  cardBackground: "rgba(14, 9, 28, 0.75)",
+  cardBorderColor: "rgba(155, 123, 255, 0.22)",
+  textColor: "#ffffff",
+  textMutedColor: "#9d8ec2",
+  headingColor: "#ffffff",
+  buttonBg: "linear-gradient(135deg, #5424D8 0%, #7547F5 50%, #9B7BFF 100%)",
+  buttonText: "#ffffff",
+  navBackground: "rgba(5, 3, 10, 0.85)",
+  footerBackground: "#05030a",
+  heroGradient: "linear-gradient(135deg, rgba(84, 36, 216, 0.28) 0%, rgba(117, 71, 245, 0.18) 50%, transparent 100%)",
+  borderGradient: "linear-gradient(135deg, rgba(155, 123, 255, 0.35) 0%, rgba(117, 71, 245, 0.1) 100%)",
+  glowIntensity: "medium",
+  glowColor: "rgba(117, 71, 245, 0.45)",
+  glassBlur: 16,
+  borderRadius: "1rem",
+};
 
 export async function GET(req: NextRequest) {
   try {
-    const theme = await prisma.themeSettings.findUnique({
+    let theme = await prisma.themeSettings.findUnique({
       where: { id: "default" },
     });
+
+    if (!theme) {
+      theme = await prisma.themeSettings.create({
+        data: {
+          id: "default",
+          activePreset: DEFAULT_THEME_FALLBACK.id,
+          primaryColor: DEFAULT_THEME_FALLBACK.primaryColor,
+          primaryHover: DEFAULT_THEME_FALLBACK.primaryHover,
+          secondaryColor: DEFAULT_THEME_FALLBACK.secondaryColor,
+          secondaryHover: DEFAULT_THEME_FALLBACK.secondaryHover,
+          accentColor: DEFAULT_THEME_FALLBACK.accentColor,
+          backgroundColor: DEFAULT_THEME_FALLBACK.backgroundColor,
+          cardBackground: DEFAULT_THEME_FALLBACK.cardBackground,
+          cardBorderColor: DEFAULT_THEME_FALLBACK.cardBorderColor,
+          textColor: DEFAULT_THEME_FALLBACK.textColor,
+          textMutedColor: DEFAULT_THEME_FALLBACK.textMutedColor,
+          headingColor: DEFAULT_THEME_FALLBACK.headingColor,
+          buttonBg: DEFAULT_THEME_FALLBACK.buttonBg,
+          buttonText: DEFAULT_THEME_FALLBACK.buttonText,
+          navBackground: DEFAULT_THEME_FALLBACK.navBackground,
+          footerBackground: DEFAULT_THEME_FALLBACK.footerBackground,
+          heroGradient: DEFAULT_THEME_FALLBACK.heroGradient,
+          borderGradient: DEFAULT_THEME_FALLBACK.borderGradient,
+          glowIntensity: DEFAULT_THEME_FALLBACK.glowIntensity,
+          glowColor: DEFAULT_THEME_FALLBACK.glowColor,
+          glassBlur: DEFAULT_THEME_FALLBACK.glassBlur,
+          borderRadius: DEFAULT_THEME_FALLBACK.borderRadius,
+        },
+      });
+    }
+
     if (theme && theme.customGradientsJson) {
       try {
         const parsed = JSON.parse(theme.customGradientsJson);
@@ -18,8 +83,10 @@ export async function GET(req: NextRequest) {
         // ignore
       }
     }
-    return NextResponse.json(theme || {});
+
+    return NextResponse.json(theme);
   } catch (error) {
+    console.error("GET theme error:", error);
     return NextResponse.json({ error: "Failed to fetch theme" }, { status: 500 });
   }
 }
@@ -33,23 +100,41 @@ export async function PUT(req: NextRequest) {
 
     const body = await req.json();
 
-    // Sanitize and normalize any custom themes stored in customGradientsJson
+    // Sanitize customGradientsJson
     let customGradientsJson = body.customGradientsJson;
     if (customGradientsJson !== undefined && customGradientsJson !== null) {
       try {
         const parsed = typeof customGradientsJson === "string" ? JSON.parse(customGradientsJson) : customGradientsJson;
         if (Array.isArray(parsed)) {
           customGradientsJson = JSON.stringify(normalizeThemeList(parsed));
+        } else {
+          customGradientsJson = JSON.stringify(parsed);
         }
       } catch {
-        // ignore
+        if (typeof customGradientsJson !== "string") {
+          customGradientsJson = JSON.stringify(customGradientsJson);
+        }
       }
+    } else {
+      customGradientsJson = null;
     }
 
-    // Check if saving a draft or publishing
-    const isDraftOnly = body._isDraft === true;
+    // Sanitize sectionOverridesJson
+    let sectionOverridesJson = body.sectionOverridesJson;
+    if (sectionOverridesJson !== undefined && sectionOverridesJson !== null) {
+      if (typeof sectionOverridesJson !== "string") {
+        try {
+          sectionOverridesJson = JSON.stringify(sectionOverridesJson);
+        } catch {
+          sectionOverridesJson = null;
+        }
+      }
+    } else {
+      sectionOverridesJson = null;
+    }
 
-    if (isDraftOnly) {
+    // Draft handling
+    if (body._isDraft === true) {
       const updated = await prisma.themeSettings.upsert({
         where: { id: "default" },
         update: {
@@ -63,61 +148,120 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: true, isDraft: true, theme: updated });
     }
 
+    // Parse glassBlur safely to an integer
+    let glassBlur: number = 16;
+    if (body.glassBlur !== undefined && body.glassBlur !== null) {
+      const parsedNum = parseInt(String(body.glassBlur).replace(/[^0-9]/g, ""), 10);
+      glassBlur = isNaN(parsedNum) ? 16 : parsedNum;
+    }
+
     const updated = await prisma.themeSettings.upsert({
       where: { id: "default" },
       update: {
-        activePreset: body.activePreset,
-        primaryColor: body.primaryColor,
-        primaryHover: body.primaryHover,
-        secondaryColor: body.secondaryColor,
-        secondaryHover: body.secondaryHover,
-        accentColor: body.accentColor,
-        backgroundColor: body.backgroundColor,
-        cardBackground: body.cardBackground,
-        cardBorderColor: body.cardBorderColor,
-        textColor: body.textColor,
-        textMutedColor: body.textMutedColor,
-        headingColor: body.headingColor,
-        buttonBg: body.buttonBg,
-        buttonText: body.buttonText,
-        navBackground: body.navBackground,
-        footerBackground: body.footerBackground,
-        heroGradient: body.heroGradient,
-        cardGradient: body.cardGradient,
-        borderGradient: body.borderGradient,
+        activePreset: body.activePreset || "luminous-purple",
+        primaryColor: body.primaryColor || "#7547F5",
+        primaryHover: body.primaryHover || "#6532eb",
+        secondaryColor: body.secondaryColor || "#9B7BFF",
+        secondaryHover: body.secondaryHover || "#8963ff",
+        accentColor: body.accentColor || "#C9B9FF",
+        backgroundColor: body.backgroundColor || "#05030a",
+        cardBackground: body.cardBackground || "rgba(14, 9, 28, 0.75)",
+        cardBorderColor: body.cardBorderColor || "rgba(155, 123, 255, 0.22)",
+        textColor: body.textColor || "#ffffff",
+        textMutedColor: body.textMutedColor || "#9d8ec2",
+        headingColor: body.headingColor || "#ffffff",
+        buttonBg: body.buttonBg || "linear-gradient(135deg, #5424D8 0%, #7547F5 50%, #9B7BFF 100%)",
+        buttonText: body.buttonText || "#ffffff",
+        navBackground: body.navBackground || "rgba(5, 3, 10, 0.85)",
+        footerBackground: body.footerBackground || "#05030a",
+        heroGradient: body.heroGradient || "linear-gradient(135deg, rgba(84, 36, 216, 0.28) 0%, rgba(117, 71, 245, 0.18) 50%, transparent 100%)",
+        cardGradient: body.cardGradient || "",
+        borderGradient: body.borderGradient || "linear-gradient(135deg, rgba(155, 123, 255, 0.35) 0%, rgba(117, 71, 245, 0.1) 100%)",
         glowIntensity: body.glowIntensity || "medium",
-        glowColor: body.glowColor,
-        sectionOverridesJson: body.sectionOverridesJson,
-        draftThemeJson: null, // Clear draft when publishing
-        glassBlur: body.glassBlur !== undefined ? Number(body.glassBlur) : undefined,
-        borderRadius: body.borderRadius,
+        glowColor: body.glowColor || "rgba(117, 71, 245, 0.45)",
+        sectionOverridesJson: sectionOverridesJson,
+        draftThemeJson: null,
+        glassBlur: glassBlur,
+        borderRadius: body.borderRadius || "1rem",
         customGradientsJson: customGradientsJson,
       },
       create: {
         id: "default",
         activePreset: body.activePreset || "luminous-purple",
         primaryColor: body.primaryColor || "#7547F5",
+        primaryHover: body.primaryHover || "#6532eb",
         secondaryColor: body.secondaryColor || "#9B7BFF",
+        secondaryHover: body.secondaryHover || "#8963ff",
         accentColor: body.accentColor || "#C9B9FF",
         backgroundColor: body.backgroundColor || "#05030a",
         cardBackground: body.cardBackground || "rgba(14, 9, 28, 0.75)",
-        cardBorderColor: body.cardBorderColor || "rgba(155, 123, 255, 0.2)",
+        cardBorderColor: body.cardBorderColor || "rgba(155, 123, 255, 0.22)",
         textColor: body.textColor || "#ffffff",
         textMutedColor: body.textMutedColor || "#9d8ec2",
         headingColor: body.headingColor || "#ffffff",
         buttonBg: body.buttonBg || "linear-gradient(135deg, #5424D8 0%, #7547F5 50%, #9B7BFF 100%)",
-        heroGradient: body.heroGradient || "linear-gradient(135deg, rgba(84, 36, 216, 0.25) 0%, rgba(117, 71, 245, 0.18) 50%, transparent 100%)",
-        borderGradient: body.borderGradient || "linear-gradient(135deg, rgba(155, 123, 255, 0.3) 0%, rgba(117, 71, 245, 0.1) 100%)",
+        buttonText: body.buttonText || "#ffffff",
+        navBackground: body.navBackground || "rgba(5, 3, 10, 0.85)",
+        footerBackground: body.footerBackground || "#05030a",
+        heroGradient: body.heroGradient || "linear-gradient(135deg, rgba(84, 36, 216, 0.28) 0%, rgba(117, 71, 245, 0.18) 50%, transparent 100%)",
+        cardGradient: body.cardGradient || "",
+        borderGradient: body.borderGradient || "linear-gradient(135deg, rgba(155, 123, 255, 0.35) 0%, rgba(117, 71, 245, 0.1) 100%)",
         glowIntensity: body.glowIntensity || "medium",
         glowColor: body.glowColor || "rgba(117, 71, 245, 0.45)",
-        sectionOverridesJson: body.sectionOverridesJson,
+        sectionOverridesJson: sectionOverridesJson,
+        glassBlur: glassBlur,
+        borderRadius: body.borderRadius || "1rem",
         customGradientsJson: customGradientsJson,
       },
     });
 
-    return NextResponse.json({ success: true, theme: updated });
-  } catch (error) {
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/theme");
+    } catch {
+      // ignore
+    }
+
+    const response = NextResponse.json({ success: true, theme: updated });
+
+    // Store active theme in a persistent cookie for edge/visitor synchronization
+    response.cookies.set("boyka_theme_settings", JSON.stringify({
+      activePreset: updated.activePreset,
+      primaryColor: updated.primaryColor,
+      primaryHover: updated.primaryHover,
+      secondaryColor: updated.secondaryColor,
+      secondaryHover: updated.secondaryHover,
+      accentColor: updated.accentColor,
+      backgroundColor: updated.backgroundColor,
+      cardBackground: updated.cardBackground,
+      cardBorderColor: updated.cardBorderColor,
+      textColor: updated.textColor,
+      textMutedColor: updated.textMutedColor,
+      headingColor: updated.headingColor,
+      buttonBg: updated.buttonBg,
+      buttonText: updated.buttonText,
+      navBackground: updated.navBackground,
+      footerBackground: updated.footerBackground,
+      heroGradient: updated.heroGradient,
+      cardGradient: updated.cardGradient,
+      borderGradient: updated.borderGradient,
+      glowIntensity: updated.glowIntensity,
+      glowColor: updated.glowColor,
+      glassBlur: updated.glassBlur,
+      borderRadius: updated.borderRadius,
+    }), {
+      path: "/",
+      maxAge: 365 * 24 * 60 * 60, // 1 year
+      sameSite: "lax",
+    });
+
+    return response;
+  } catch (error: any) {
     console.error("Save theme error:", error);
-    return NextResponse.json({ error: "Failed to update theme" }, { status: 500 });
+    return NextResponse.json({ error: error?.message || "Failed to update theme" }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return PUT(req);
 }

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const sections = await prisma.sectionContent.findMany({
@@ -64,4 +67,8 @@ export async function PUT(req: NextRequest) {
     console.error("Save section error:", error);
     return NextResponse.json({ error: "Failed to update section" }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return PUT(req);
 }

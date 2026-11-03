@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const seo = await prisma.seoSettings.findUnique({
@@ -44,4 +47,8 @@ export async function PUT(req: NextRequest) {
     console.error("Save SEO error:", error);
     return NextResponse.json({ error: "Failed to update SEO settings" }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return PUT(req);
 }

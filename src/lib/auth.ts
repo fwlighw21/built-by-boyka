@@ -186,10 +186,21 @@ export async function verifyAdminSession(
   if (!payload || !payload.sessionId) return null;
 
   const registry = getSessionRegistry();
-  const session = registry.get(payload.sessionId);
-  if (!session) return null;
-
+  let session = registry.get(payload.sessionId);
   const now = Date.now();
+
+  if (!session) {
+    // Rehydrate serverless session from cryptographically verified JWT
+    session = {
+      sessionId: payload.sessionId,
+      userId: payload.userId,
+      username: payload.username,
+      lastActivity: now,
+      createdAt: payload.iat ? payload.iat * 1000 : now,
+    };
+    registry.set(payload.sessionId, session);
+  }
+
   const elapsed = now - session.lastActivity;
 
   // Strict 30-second inactivity check

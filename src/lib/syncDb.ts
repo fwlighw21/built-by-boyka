@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { put, list } from "@vercel/blob";
-import { prisma, resetPrismaClient } from "./prisma";
+import { prisma } from "./prisma";
 
 const DB_FILENAME = "dev.db";
 const BLOB_PATH = "database/dev.db";
@@ -91,7 +91,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
               // ignore
             }
             try {
-              resetPrismaClient();
+              await prisma.$disconnect();
             } catch {
               // ignore
             }

@@ -29,16 +29,41 @@ if (isServerless) {
   process.env.DATABASE_URL = `file:${tmpDbPath}`;
 }
 
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+const globalForPrisma = global as unknown as { prismaInstance: PrismaClient | null };
 
-export const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({
+function createClient(): PrismaClient {
+  return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
-
-if (!globalForPrisma.prisma) {
-  globalForPrisma.prisma = prisma;
 }
+
+export function getPrismaClient(): PrismaClient {
+  if (!globalForPrisma.prismaInstance) {
+    globalForPrisma.prismaInstance = createClient();
+  }
+  return globalForPrisma.prismaInstance;
+}
+
+export function resetPrismaClient(): void {
+  if (globalForPrisma.prismaInstance) {
+    try {
+      globalForPrisma.prismaInstance.$disconnect().catch(() => {});
+    } catch {
+      // ignore
+    }
+  }
+  globalForPrisma.prismaInstance = createClient();
+}
+
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient() as any;
+    const value = client[prop];
+    if (typeof value === "function") {
+      return value.bind(client);
+    }
+    return value;
+  },
+});
 
 export default prisma;

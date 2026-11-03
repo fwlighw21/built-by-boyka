@@ -1,5 +1,6 @@
 import React from "react";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced } from "@/lib/syncDb";
 import Navbar from "@/components/public/Navbar";
 import Hero from "@/components/public/Hero";
 import TrustIndicators from "@/components/public/TrustIndicators";
@@ -14,8 +15,11 @@ import Footer from "@/components/public/Footer";
 
 // Revalidate data dynamically on each request
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function HomePage() {
+  await ensureDatabaseSynced();
+
   let site: any = null;
   let navItems: any[] = [];
   let sectionsList: any[] = [];

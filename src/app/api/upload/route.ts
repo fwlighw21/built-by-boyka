@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob, uploadMediaToBlob } from "@/lib/syncDb";
 import fs from "fs/promises";
 import path from "path";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,6 +15,8 @@ export async function POST(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    await ensureDatabaseSynced();
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -47,19 +54,23 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Ensure uploads directory exists
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    await fs.mkdir(uploadDir, { recursive: true });
-
-    // Sanitize filename
+    let publicUrl: string;
     const ext = path.extname(file.name) || (file.type.includes("webp") ? ".webp" : ".jpg");
     const baseName = path.basename(file.name, ext).replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 40);
     const uniqueFileName = `${Date.now()}-${baseName}${ext}`;
-    const filePath = path.join(uploadDir, uniqueFileName);
 
-    await fs.writeFile(filePath, buffer);
-
-    const publicUrl = `/uploads/${uniqueFileName}`;
+    // Upload to Vercel Blob (production / serverless / connected store)
+    try {
+      publicUrl = await uploadMediaToBlob(buffer, uniqueFileName, file.type);
+    } catch (blobErr: any) {
+      console.warn("[Upload] Blob upload fallback to local:", blobErr.message);
+      // Local development fallback
+      const uploadDir = path.join(process.cwd(), "public", "uploads");
+      await fs.mkdir(uploadDir, { recursive: true });
+      const filePath = path.join(uploadDir, uniqueFileName);
+      await fs.writeFile(filePath, buffer);
+      publicUrl = `/uploads/${uniqueFileName}`;
+    }
 
     // Record in database
     const asset = await prisma.mediaAsset.create({
@@ -72,6 +83,16 @@ export async function POST(req: NextRequest) {
         altText: altText || baseName,
       },
     });
+
+    // Persist updated database
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/media");
+    } catch {
+      // ignore
+    }
 
     return NextResponse.json({
       success: true,

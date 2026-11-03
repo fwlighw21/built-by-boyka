@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   try {
+    await ensureDatabaseSynced();
+
     const body = await req.json();
     const { name, phone, email, goal, packageName, message } = body;
 
@@ -29,6 +35,8 @@ export async function POST(req: NextRequest) {
         status: "NEW",
       },
     });
+
+    await persistDatabaseToBlob();
 
     return NextResponse.json({ success: true, inquiryId: inquiry.id }, { status: 201 });
   } catch (error) {

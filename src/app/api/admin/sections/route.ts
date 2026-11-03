@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
   try {
+    await ensureDatabaseSynced();
     const sections = await prisma.sectionContent.findMany({
       orderBy: { order: "asc" },
     });
@@ -20,6 +23,8 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
     const { sectionKey } = body;
@@ -61,6 +66,15 @@ export async function PUT(req: NextRequest) {
         isVisible: body.isVisible !== undefined ? Boolean(body.isVisible) : true,
       },
     });
+
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/content");
+    } catch {
+      // ignore
+    }
 
     return NextResponse.json({ success: true, section: updated });
   } catch (error) {

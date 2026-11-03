@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
+    await ensureDatabaseSynced();
     const animations = await prisma.animationSettings.findUnique({
       where: { id: "default" },
     });
@@ -22,6 +25,8 @@ export async function PUT(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
 
@@ -49,6 +54,15 @@ export async function PUT(req: NextRequest) {
         backgroundEffect: body.backgroundEffect || "floating-orbs",
       },
     });
+
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/animations");
+    } catch {
+      // ignore
+    }
 
     return NextResponse.json({ success: true, animations: updated });
   } catch (error) {

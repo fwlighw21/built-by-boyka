@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
+    await ensureDatabaseSynced();
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
@@ -27,6 +33,8 @@ export async function POST(req: NextRequest) {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    await ensureDatabaseSynced();
+
     const body = await req.json();
     const { title, slug, seoTitle, metaDescription, ogImage, isPublished, showInNav, blocksJson } = body;
 
@@ -49,6 +57,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath(`/pages/${cleanSlug}`);
+      revalidatePath("/admin/pages");
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({ success: true, page }, { status: 201 });
   } catch (error) {
     console.error("Create page error:", error);
@@ -60,6 +78,8 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
     const { id } = body;
@@ -80,6 +100,16 @@ export async function PUT(req: NextRequest) {
       },
     });
 
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      if (updated.slug) revalidatePath(`/pages/${updated.slug}`);
+      revalidatePath("/admin/pages");
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({ success: true, page: updated });
   } catch (error) {
     console.error("Update page error:", error);
@@ -92,11 +122,22 @@ export async function DELETE(req: NextRequest) {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    await ensureDatabaseSynced();
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "Page ID required" }, { status: 400 });
 
     await prisma.customPage.delete({ where: { id } });
+
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/pages");
+    } catch {
+      // ignore
+    }
 
     return NextResponse.json({ success: true, message: "Page deleted" });
   } catch (error) {

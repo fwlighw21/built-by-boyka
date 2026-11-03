@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
   try {
+    await ensureDatabaseSynced();
     const seo = await prisma.seoSettings.findUnique({
       where: { id: "default" },
     });
@@ -20,6 +23,8 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
 
@@ -41,6 +46,15 @@ export async function PUT(req: NextRequest) {
         keywords: body.keywords || "fitness coaching, online coach, Boyka",
       },
     });
+
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/seo");
+    } catch {
+      // ignore
+    }
 
     return NextResponse.json({ success: true, seo: updated });
   } catch (error) {

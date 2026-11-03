@@ -3,17 +3,23 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced } from "@/lib/syncDb";
 import Navbar from "@/components/public/Navbar";
 import Footer from "@/components/public/Footer";
 import { parseJsonSafe, getYouTubeEmbedUrl } from "@/lib/utils";
 import { MessageCircle, Check, ArrowRight } from "lucide-react";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface PageProps {
   params: { slug: string };
 }
 
 export default async function DynamicCustomPage({ params }: PageProps) {
+  await ensureDatabaseSynced();
+
   const [page, site, navItems] = await Promise.all([
     prisma.customPage.findUnique({
       where: { slug: params.slug },

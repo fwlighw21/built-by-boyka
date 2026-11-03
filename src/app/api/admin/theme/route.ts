@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
 import { normalizeThemeList, READY_MADE_THEMES } from "@/lib/themeLibrary";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ const DEFAULT_THEME_FALLBACK = READY_MADE_THEMES[0] || {
 
 export async function GET(req: NextRequest) {
   try {
+    await ensureDatabaseSynced();
+
     let theme = await prisma.themeSettings.findUnique({
       where: { id: "default" },
     });
@@ -97,6 +100,8 @@ export async function PUT(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
 
@@ -214,6 +219,8 @@ export async function PUT(req: NextRequest) {
         customGradientsJson: customGradientsJson,
       },
     });
+
+    await persistDatabaseToBlob();
 
     try {
       revalidatePath("/", "layout");

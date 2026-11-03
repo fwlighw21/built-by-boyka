@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
+    await ensureDatabaseSynced();
     const items = await prisma.navigationItem.findMany({
       orderBy: { order: "asc" },
     });
@@ -17,6 +23,8 @@ export async function POST(req: NextRequest) {
   try {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
     const { label, url, isExternal, order, isVisible } = body;
@@ -37,6 +45,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/navigation");
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({ success: true, item }, { status: 201 });
   } catch (error) {
     console.error("Create nav item error:", error);
@@ -48,6 +65,8 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
 
@@ -62,6 +81,16 @@ export async function PUT(req: NextRequest) {
           });
         }
       }
+
+      await persistDatabaseToBlob();
+
+      try {
+        revalidatePath("/", "layout");
+        revalidatePath("/admin/navigation");
+      } catch {
+        // ignore
+      }
+
       return NextResponse.json({ success: true, message: "Reordered successfully" });
     }
 
@@ -80,6 +109,15 @@ export async function PUT(req: NextRequest) {
       },
     });
 
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/navigation");
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({ success: true, item: updated });
   } catch (error) {
     console.error("Update nav item error:", error);
@@ -92,11 +130,22 @@ export async function DELETE(req: NextRequest) {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    await ensureDatabaseSynced();
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "Item ID required" }, { status: 400 });
 
     await prisma.navigationItem.delete({ where: { id } });
+
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/navigation");
+    } catch {
+      // ignore
+    }
 
     return NextResponse.json({ success: true, message: "Item deleted" });
   } catch (error) {

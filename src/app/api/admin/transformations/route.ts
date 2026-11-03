@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced, persistDatabaseToBlob } from "@/lib/syncDb";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
+    await ensureDatabaseSynced();
     const items = await prisma.clientTransformation.findMany({
       orderBy: { order: "asc" },
     });
@@ -17,6 +23,8 @@ export async function POST(req: NextRequest) {
   try {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
     const { clientName, category, beforeImage, afterImage, durationWeeks, weightLossKg, muscleGainKg, description, clientQuote, isFeatured, hasConsent, isPublished, order } = body;
@@ -43,6 +51,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/transformations");
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({ success: true, transformation: item }, { status: 201 });
   } catch (error) {
     console.error("Create transformation error:", error);
@@ -54,6 +71,8 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await ensureDatabaseSynced();
 
     const body = await req.json();
     const { id } = body;
@@ -79,6 +98,15 @@ export async function PUT(req: NextRequest) {
       },
     });
 
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/transformations");
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({ success: true, transformation: updated });
   } catch (error) {
     console.error("Update transformation error:", error);
@@ -91,11 +119,22 @@ export async function DELETE(req: NextRequest) {
     const session = await verifyAdminSession(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    await ensureDatabaseSynced();
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     await prisma.clientTransformation.delete({ where: { id } });
+
+    await persistDatabaseToBlob();
+
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/admin/transformations");
+    } catch {
+      // ignore
+    }
 
     return NextResponse.json({ success: true, message: "Deleted" });
   } catch (error) {

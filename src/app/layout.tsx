@@ -2,9 +2,13 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import "./globals.css";
 import { prisma } from "@/lib/prisma";
+import { ensureDatabaseSynced } from "@/lib/syncDb";
 import ThemeInjector from "@/components/public/ThemeInjector";
 import BackgroundOrbs from "@/components/public/BackgroundOrbs";
 import FloatingWhatsApp from "@/components/public/FloatingWhatsApp";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
@@ -50,6 +54,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  await ensureDatabaseSynced();
+
   let theme = null;
   let animations = null;
   let site = null;

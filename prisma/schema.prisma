@@ -1,0 +1,315 @@
+// Built By Boyka - Prisma Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  name         String
+  email        String?
+  lastLogin    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model SiteSettings {
+  id                      String   @id @default("default")
+  brandName               String   @default("Built By Boyka")
+  siteTitle               String   @default("Built By Boyka | Premium Coaching")
+  tagline                 String   @default("Transform Your Physique. Master Your Discipline.")
+  logoUrl                 String?
+  logoText                String   @default("BUILT BY BOYKA")
+  faviconUrl              String?
+  bioShort                String?
+  whatsappLocal           String   @default("01140108262")
+  whatsappInternational   String   @default("+201140108262")
+  whatsappDefaultMessage  String   @default("Hello Built By Boyka, I would like to know more about your coaching services.")
+  whatsappPackageTemplate String   @default("Hello Built By Boyka, I'm interested in the [Package Name] package. Please send me more details.")
+  whatsappServiceTemplate String   @default("Hello Built By Boyka, I'm interested in [Service Name]. Could you provide more information?")
+  whatsappFloatingEnabled Boolean  @default(true)
+  whatsappFloatingPosition String  @default("bottom-right") // bottom-right or bottom-left
+  contactEmail            String   @default("contact@builtbyboyka.com")
+  contactPhone            String   @default("+201140108262")
+  location                String   @default("Cairo, Egypt / Worldwide Online Coaching")
+  workingHours            String   @default("Mon - Sat: 9:00 AM - 10:00 PM (GMT+2)")
+  updatedAt               DateTime @updatedAt
+}
+
+model ThemeSettings {
+  id                  String   @id @default("default")
+  activePreset        String   @default("midnight-cyan")
+  primaryColor        String   @default("#06b6d4")
+  primaryHover        String   @default("#0891b2")
+  secondaryColor      String   @default("#8b5cf6")
+  secondaryHover      String   @default("#7c3aed")
+  accentColor         String   @default("#10b981")
+  backgroundColor     String   @default("#05070a")
+  cardBackground      String   @default("rgba(16, 22, 35, 0.75)")
+  cardBorderColor     String   @default("rgba(6, 182, 212, 0.2)")
+  textColor           String   @default("#f8fafc")
+  textMutedColor      String   @default("#94a3b8")
+  headingColor        String   @default("#ffffff")
+  buttonBg            String   @default("linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)")
+  buttonText          String   @default("#ffffff")
+  navBackground       String   @default("rgba(5, 7, 10, 0.85)")
+  footerBackground    String   @default("#05070a")
+  glassBlur           Int      @default(16)
+  borderRadius        String   @default("1rem")
+  heroGradient        String?  @default("linear-gradient(135deg, rgba(84, 36, 216, 0.2) 0%, rgba(117, 71, 245, 0.15) 50%, transparent 100%)")
+  cardGradient        String?
+  borderGradient      String?  @default("linear-gradient(135deg, rgba(155, 123, 255, 0.3) 0%, rgba(117, 71, 245, 0.1) 100%)")
+  glowIntensity       String   @default("medium") // subtle, medium, high
+  glowColor           String   @default("rgba(117, 71, 245, 0.45)")
+  sectionOverridesJson String? // JSON object of per-section theme overrides
+  draftThemeJson      String?  // JSON draft theme
+  customGradientsJson String?  // JSON array of custom gradient presets
+  updatedAt           DateTime @updatedAt
+}
+
+model FeaturedVideoSettings {
+  id                 String   @id @default("default")
+  title              String   @default("THE BUILT BY BOYKA METHOD")
+  subtitle           String?  @default("WATCH HOW WE TRANSFORM YOUR PHYSIQUE & DISCIPLINE IN 12 WEEKS")
+  description        String?  @default("Coach Boyka breaks down the exact science of progressive hypertrophy, metabolic meal planning, and daily 1-on-1 WhatsApp accountability that delivers championship-level transformations.")
+  videoType          String   @default("youtube") // youtube, vimeo, upload
+  videoUrl           String   @default("https://www.youtube.com/watch?v=4Y2ZdHCOXok")
+  thumbnailUrl       String?  @default("https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop")
+  ctaLabel           String   @default("Claim Your Free VIP Assessment")
+  ctaUrl             String   @default("https://wa.me/201140108262?text=Hello%20Coach%20Boyka%2C%20I%20watched%20your%20service%20video%20and%20want%20to%20apply%20for%20VIP%20coaching.")
+  showHeadline       Boolean  @default(true)
+  showDescription    Boolean  @default(true)
+  showCta            Boolean  @default(true)
+  playMode           String   @default("inline") // inline, modal
+  autoplay           Boolean  @default(false)
+  videoWidth         String   @default("max-w-5xl") // max-w-4xl, max-w-5xl, max-w-6xl, max-w-7xl
+  maxHeight          String   @default("aspect-video")
+  backgroundGradient String?  @default("radial-gradient(ellipse at center, rgba(117, 71, 245, 0.15) 0%, rgba(5, 3, 10, 0.98) 75%)")
+  order              Int      @default(1)
+  isVisible          Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+}
+
+model AnimationSettings {
+  id                 String   @id @default("default")
+  animationsEnabled  Boolean  @default(true)
+  reducedMotion      Boolean  @default(false)
+  orbCount           Int      @default(3)
+  animationSpeed     String   @default("normal") // slow, normal, fast
+  animationIntensity String   @default("medium") // subtle, medium, high
+  blurAmount         Int      @default(90) // px
+  backgroundEffect   String   @default("floating-orbs") // floating-orbs, gradient-mesh, static-glow
+  entranceAnimation  String   @default("fade-up")
+  hoverEffects       Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+}
+
+model NavigationItem {
+  id        String   @id @default(cuid())
+  label     String
+  url       String
+  isExternal Boolean @default(false)
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
+  parentId  String?
+  target    String   @default("_self")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SectionContent {
+  id                 String   @id @default(cuid())
+  sectionKey         String   @unique // hero, about, trust, services, transformations, packages, videos, testimonials, faq, contact, cta
+  title              String
+  subtitle           String?
+  badge              String?
+  body               String?
+  primaryButtonText  String?
+  primaryButtonLink  String?
+  secondaryButtonText String?
+  secondaryButtonLink String?
+  imageUrl           String?
+  secondaryImageUrl  String?
+  videoUrl           String?
+  statsJson          String? // JSON array: [{"number": "1,200+", "label": "Clients Transformed"}]
+  order              Int      @default(0)
+  isVisible          Boolean  @default(true)
+  customGradient     String?
+  updatedAt          DateTime @updatedAt
+}
+
+model CoachingService {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  badge            String?
+  shortDescription String
+  fullDescription  String?
+  coverImage       String?
+  videoUrl         String?
+  featuresJson     String   @default("[]") // JSON array of string features
+  duration         String?
+  price            Float?
+  currency         String   @default("EGP")
+  ctaText          String   @default("Inquire on WhatsApp")
+  whatsappTemplate String?
+  order            Int      @default(0)
+  isPublished      Boolean  @default(true)
+  isFeatured       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model CoachingPackage {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  shortDescription String
+  fullDescription String?
+  price           Float
+  originalPrice   Float?
+  currency        String   @default("EGP")
+  billingPeriod   String   @default("month") // month, 3 months, 6 months, one-time, custom
+  duration        String   // e.g. "3 Months Full Coaching"
+  sessionsCount   String?  // e.g. "Weekly 1-on-1 check-ins"
+  featuresJson    String   @default("[]") // JSON array of string features
+  benefitsJson    String?  // JSON array of strings
+  isFeatured      Boolean  @default(false)
+  badge           String?  // e.g. "MOST POPULAR", "VIP ELITE"
+  coverImage      String?
+  ctaText         String   @default("Join VIP Program")
+  customGradient  String?
+  order           Int      @default(0)
+  isPublished     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ClientTransformation {
+  id            String   @id @default(cuid())
+  clientName    String
+  category      String   @default("Fat Loss") // Fat Loss, Muscle Gain, Recomp, Contest Prep
+  beforeImage   String
+  afterImage    String
+  durationWeeks Int?
+  weightLossKg  Float?
+  muscleGainKg  Float?
+  description   String?
+  clientQuote   String?
+  isFeatured    Boolean  @default(false)
+  hasConsent    Boolean  @default(true)
+  order         Int      @default(0)
+  isPublished   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model VideoItem {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  videoType    String   @default("youtube") // youtube, vimeo, upload
+  videoUrl     String
+  thumbnailUrl String?
+  category     String   @default("Training")
+  duration     String?
+  isFeatured   Boolean  @default(false)
+  order        Int      @default(0)
+  isPublished  Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Testimonial {
+  id          String   @id @default(cuid())
+  clientName  String
+  clientTitle String?
+  avatarUrl   String?
+  rating      Int      @default(5)
+  program     String?
+  content     String
+  videoUrl    String?
+  isFeatured  Boolean  @default(false)
+  order       Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FaqItem {
+  id          String   @id @default(cuid())
+  question    String
+  answer      String
+  category    String   @default("General")
+  order       Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CustomPage {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  seoTitle        String?
+  metaDescription String?
+  ogImage         String?
+  isPublished     Boolean  @default(false)
+  showInNav       Boolean  @default(false)
+  blocksJson      String   @default("[]") // JSON array of Page Blocks
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model MediaAsset {
+  id        String   @id @default(cuid())
+  fileName  String
+  url       String
+  fileSize  Int
+  mimeType  String
+  category  String   @default("general")
+  altText   String?
+  createdAt DateTime @default(now())
+}
+
+model ContactInquiry {
+  id          String   @id @default(cuid())
+  name        String
+  phone       String
+  email       String?
+  goal        String?
+  packageName String?
+  message     String
+  status      String   @default("NEW") // NEW, CONTACTED, CONVERTED, ARCHIVED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SocialLink {
+  id        String   @id @default(cuid())
+  platform  String
+  url       String
+  icon      String
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model SeoSettings {
+  id                 String   @id @default("default")
+  metaTitle          String   @default("Built By Boyka | Premium Coaching")
+  metaDescription    String   @default("Elite online fitness coaching, custom nutrition plans, tailored workout routines, and high-performance body transformations by Boyka.")
+  keywords           String   @default("fitness coaching, online coach, body transformation, muscle building, fat loss, Boyka coaching, Egypt fitness, VIP fitness")
+  ogImage            String?
+  twitterHandle      String?
+  canonicalUrl       String?
+  googleAnalyticsId  String?
+  updatedAt          DateTime @updatedAt
+}

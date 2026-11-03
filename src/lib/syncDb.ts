@@ -56,15 +56,15 @@ export async function ensureDatabaseSynced(): Promise<void> {
       const remoteBlob = blobs.find((b) => b.pathname === BLOB_PATH);
 
       if (remoteBlob) {
-        const remoteTime = new Date(remoteBlob.uploadedAt).getTime();
+        const remoteVersion = (remoteBlob as any).etag || new Date(remoteBlob.uploadedAt).toISOString();
         let shouldDownload = !dbExists;
         if (dbExists) {
           if (!fs.existsSync(syncRecordPath)) {
             shouldDownload = true;
           } else {
             try {
-              const lastSyncedTime = Number(fs.readFileSync(syncRecordPath, "utf-8").trim());
-              if (isNaN(lastSyncedTime) || remoteTime > lastSyncedTime) {
+              const lastSyncedVersion = fs.readFileSync(syncRecordPath, "utf-8").trim();
+              if (lastSyncedVersion !== remoteVersion) {
                 shouldDownload = true;
               }
             } catch {
@@ -74,7 +74,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
         }
 
         if (shouldDownload) {
-          const fetchUrl = `${remoteBlob.url}?t=${remoteTime}`;
+          const fetchUrl = `${remoteBlob.url}?v=${encodeURIComponent(remoteVersion)}`;
           const res = await fetch(fetchUrl, { cache: "no-store" });
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
@@ -85,7 +85,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
             }
             fs.writeFileSync(dbPath, buffer);
             try {
-              fs.writeFileSync(syncRecordPath, String(remoteTime));
+              fs.writeFileSync(syncRecordPath, remoteVersion);
             } catch {
               // ignore
             }
@@ -94,7 +94,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
             } catch {
               // ignore
             }
-            console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes) to ${dbPath}`);
+            console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes, version: ${remoteVersion}) to ${dbPath}`);
           }
         }
       } else {
@@ -146,7 +146,9 @@ export async function persistDatabaseToBlob(): Promise<string | null> {
     });
     lastSyncTimestamp = Date.now();
     try {
-      fs.writeFileSync(syncRecordPath, String(Date.now()));
+      if (fs.existsSync(syncRecordPath)) {
+        fs.unlinkSync(syncRecordPath);
+      }
     } catch {
       // ignore
     }

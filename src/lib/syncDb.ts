@@ -56,15 +56,15 @@ export async function ensureDatabaseSynced(): Promise<void> {
       const remoteBlob = blobs.find((b) => b.pathname === BLOB_PATH);
 
       if (remoteBlob) {
-        const remoteVersion = (remoteBlob as any).etag || new Date(remoteBlob.uploadedAt).toISOString();
+        const remoteTime = new Date(remoteBlob.uploadedAt).getTime();
         let shouldDownload = !dbExists;
         if (dbExists) {
           if (!fs.existsSync(syncRecordPath)) {
             shouldDownload = true;
           } else {
             try {
-              const lastSyncedVersion = fs.readFileSync(syncRecordPath, "utf-8").trim();
-              if (lastSyncedVersion !== remoteVersion) {
+              const lastSyncedTime = Number(fs.readFileSync(syncRecordPath, "utf-8").trim());
+              if (isNaN(lastSyncedTime) || remoteTime > lastSyncedTime) {
                 shouldDownload = true;
               }
             } catch {
@@ -74,7 +74,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
         }
 
         if (shouldDownload) {
-          const fetchUrl = `${remoteBlob.url}?v=${encodeURIComponent(remoteVersion)}`;
+          const fetchUrl = `${remoteBlob.url}?t=${Date.now()}`;
           const res = await fetch(fetchUrl, { cache: "no-store" });
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
@@ -85,7 +85,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
             }
             fs.writeFileSync(dbPath, buffer);
             try {
-              fs.writeFileSync(syncRecordPath, remoteVersion);
+              fs.writeFileSync(syncRecordPath, String(remoteTime));
             } catch {
               // ignore
             }
@@ -94,7 +94,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
             } catch {
               // ignore
             }
-            console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes, version: ${remoteVersion}) to ${dbPath}`);
+            console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes) to ${dbPath}`);
           }
         }
       } else {
@@ -146,9 +146,7 @@ export async function persistDatabaseToBlob(): Promise<string | null> {
     });
     lastSyncTimestamp = Date.now();
     try {
-      if (fs.existsSync(syncRecordPath)) {
-        fs.unlinkSync(syncRecordPath);
-      }
+      fs.writeFileSync(syncRecordPath, String(Date.now()));
     } catch {
       // ignore
     }

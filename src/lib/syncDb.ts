@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 
 const DB_FILENAME = "dev.db";
 const BLOB_PATH = "database/dev.db";
+const BLOB_PUBLIC_URL = "https://vyuot0andraftfiy.public.blob.vercel-storage.com/database/dev.db";
 
 export function getDbPath(): string {
   const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -21,7 +22,7 @@ const SYNC_INTERVAL_MS = 500;
 
 /**
  * Ensures the SQLite database on this container is up-to-date with the latest
- * persistent database stored in Vercel Blob.
+ * persistent database stored in Vercel Blob using direct HTTP HEAD cache validation.
  */
 export async function ensureDatabaseSynced(): Promise<void> {
   const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -52,19 +53,19 @@ export async function ensureDatabaseSynced(): Promise<void> {
 
   inFlightSync = (async () => {
     try {
-      const { blobs } = await list({ prefix: BLOB_PATH });
-      const remoteBlob = blobs.find((b) => b.pathname === BLOB_PATH);
+      const headUrl = `${BLOB_PUBLIC_URL}?t=${Date.now()}`;
+      const headRes = await fetch(headUrl, { method: "HEAD", cache: "no-store" });
 
-      if (remoteBlob) {
-        const remoteTime = new Date(remoteBlob.uploadedAt).getTime();
+      if (headRes.ok) {
+        const etag = headRes.headers.get("etag") || headRes.headers.get("last-modified") || "";
         let shouldDownload = !dbExists;
         if (dbExists) {
           if (!fs.existsSync(syncRecordPath)) {
             shouldDownload = true;
           } else {
             try {
-              const lastSyncedTime = Number(fs.readFileSync(syncRecordPath, "utf-8").trim());
-              if (isNaN(lastSyncedTime) || remoteTime > lastSyncedTime) {
+              const localVersion = fs.readFileSync(syncRecordPath, "utf-8").trim();
+              if (localVersion !== etag) {
                 shouldDownload = true;
               }
             } catch {
@@ -74,8 +75,8 @@ export async function ensureDatabaseSynced(): Promise<void> {
         }
 
         if (shouldDownload) {
-          const fetchUrl = `${remoteBlob.url}?t=${Date.now()}`;
-          const res = await fetch(fetchUrl, { cache: "no-store" });
+          const downloadUrl = `${BLOB_PUBLIC_URL}?download=1&t=${Date.now()}`;
+          const res = await fetch(downloadUrl, { cache: "no-store" });
           if (res.ok) {
             const arrayBuffer = await res.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
@@ -85,7 +86,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
             }
             fs.writeFileSync(dbPath, buffer);
             try {
-              fs.writeFileSync(syncRecordPath, String(remoteTime));
+              fs.writeFileSync(syncRecordPath, etag);
             } catch {
               // ignore
             }
@@ -94,11 +95,11 @@ export async function ensureDatabaseSynced(): Promise<void> {
             } catch {
               // ignore
             }
-            console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes) to ${dbPath}`);
+            console.log(`[SyncDb] Synced SQLite database from Blob (${buffer.length} bytes, etag: ${etag}) to ${dbPath}`);
           }
         }
       } else {
-        // Remote blob does not exist yet: seed it from initial bundled database
+        // Blob does not exist yet: seed it from initial bundled database
         if (!dbExists) {
           const candidatePaths = [
             path.join(process.cwd(), "prisma", "dev.db"),
@@ -146,7 +147,9 @@ export async function persistDatabaseToBlob(): Promise<string | null> {
     });
     lastSyncTimestamp = Date.now();
     try {
-      fs.writeFileSync(syncRecordPath, String(Date.now()));
+      if (fs.existsSync(syncRecordPath)) {
+        fs.unlinkSync(syncRecordPath);
+      }
     } catch {
       // ignore
     }

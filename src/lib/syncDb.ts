@@ -50,15 +50,15 @@ export async function ensureDatabaseSynced(): Promise<void> {
     const remoteBlob = blobs.find((b) => b.pathname === BLOB_PATH);
 
     if (remoteBlob) {
-      const remoteIso = new Date(remoteBlob.uploadedAt).toISOString();
+      const remoteTime = new Date(remoteBlob.uploadedAt).getTime();
       let shouldDownload = !dbExists;
       if (dbExists) {
         if (!fs.existsSync(syncRecordPath)) {
           shouldDownload = true;
         } else {
           try {
-            const lastSyncedIso = fs.readFileSync(syncRecordPath, "utf-8").trim();
-            if (lastSyncedIso !== remoteIso) {
+            const lastSyncedTime = Number(fs.readFileSync(syncRecordPath, "utf-8").trim());
+            if (isNaN(lastSyncedTime) || remoteTime > lastSyncedTime) {
               shouldDownload = true;
             }
           } catch {
@@ -68,7 +68,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
       }
 
       if (shouldDownload) {
-        const fetchUrl = `${remoteBlob.url}?t=${new Date(remoteBlob.uploadedAt).getTime()}`;
+        const fetchUrl = `${remoteBlob.url}?t=${remoteTime}`;
         const res = await fetch(fetchUrl, { cache: "no-store" });
         if (res.ok) {
           const arrayBuffer = await res.arrayBuffer();
@@ -79,7 +79,7 @@ export async function ensureDatabaseSynced(): Promise<void> {
           }
           fs.writeFileSync(dbPath, buffer);
           try {
-            fs.writeFileSync(syncRecordPath, remoteIso);
+            fs.writeFileSync(syncRecordPath, String(remoteTime));
           } catch {
             // ignore
           }
@@ -135,7 +135,7 @@ export async function persistDatabaseToBlob(): Promise<string | null> {
     });
     lastSyncTimestamp = Date.now();
     try {
-      fs.writeFileSync(syncRecordPath, new Date(blob.uploadedAt).toISOString());
+      fs.writeFileSync(syncRecordPath, String(Date.now()));
     } catch {
       // ignore
     }
